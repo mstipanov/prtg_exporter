@@ -24,6 +24,14 @@ class PrtgSensorDataProvider @Autowired constructor(sensorValueProviders: Collec
     }
 
     private fun fetchPrtgSensorData(asyncHttpClient: AsyncHttpClient, sensorId: String, keys: List<String>): PrtgSensorData {
+/*
+        https://prtg.ib-inet.com/api/table.json?content=sensors&columns=objid,device,group,probe,lastvalue&count=100000&start=1&username=monitor&passhash=3535345953&filter_device=MUNMAR03.ancotel.local
+
+        https://prtg.ib-inet.com/api/getsensordetails.json?id=24260&username=monitor&passhash=3535345953
+
+        https://prtg.ib-inet.com/api/table.json?content=sensors&columns=objid,device,group,tags,lastvalue&count=100000&start=0&username=monitor&passhash=3535345953&filter_device=MUNMAR03.ancotel.local
+*/
+
         val url = append(append(append(prtgSensorDetailsUrl, "id", sensorId), "username", prtgUsername), "passhash", prtgPassword)
 
         val whenResponse = asyncHttpClient.prepareGet(url).execute()
