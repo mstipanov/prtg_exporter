@@ -1,5 +1,6 @@
 package org.infobip.prometheus.prtgexporter.prtg
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.asynchttpclient.AsyncHttpClient
 import org.asynchttpclient.Dsl.asyncHttpClient
@@ -7,45 +8,25 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.net.URLEncoder
-import java.util.*
 
 
 @Service
-class PrtgSensorDataProvider @Autowired constructor(sensorValueProviders: Collection<SensorValueProvider>,
-                                                    @Value("\${prtg.sensor.details.url}") val prtgSensorDetailsUrl: String,
+class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://127.0.0.1:8080}") val prtgUrl: String,
                                                     @Value("\${prtg.username:}") val prtgUsername: String,
-                                                    @Value("\${prtg.password:}") val prtgPassword: String,
-                                                    @Value("\${prtg.sensors}") val sensorIds: Array<String>) {
-    val sensorValueProviderMap = sensorValueProviders.associateBy { it.sensorType }
-
-    fun getSensorData(keys: List<String>): List<PrtgSensorData> {
+                                                    @Value("\${prtg.password:}") val prtgPassword: String) {
+    fun getSensorData(): Array<PrtgSensorData> {
         val asyncHttpClient = asyncHttpClient()
-        return sensorIds.map { fetchPrtgSensorData(asyncHttpClient, it, keys) }.filter { it.value != null }
+        return fetchPrtgSensorData(asyncHttpClient)
     }
 
-    private fun fetchPrtgSensorData(asyncHttpClient: AsyncHttpClient, sensorId: String, keys: List<String>): PrtgSensorData {
-/*
-        https://prtg.ib-inet.com/api/table.json?content=sensors&columns=objid,device,group,probe,lastvalue&count=100000&start=1&username=monitor&passhash=3535345953&filter_device=MUNMAR03.ancotel.local
-
-        https://prtg.ib-inet.com/api/getsensordetails.json?id=24260&username=monitor&passhash=3535345953
-
-        https://prtg.ib-inet.com/api/table.json?content=sensors&columns=objid,device,group,tags,lastvalue&count=100000&start=0&username=monitor&passhash=3535345953&filter_device=MUNMAR03.ancotel.local
-*/
-
-        val url = append(append(append(prtgSensorDetailsUrl, "id", sensorId), "username", prtgUsername), "passhash", prtgPassword)
+    private fun fetchPrtgSensorData(asyncHttpClient: AsyncHttpClient): Array<PrtgSensorData> {
+        val url = append(append("$prtgUrl/api/table.json?content=sensors&columns=objid,device,name,group,tags,lastvalue&count=100000&start=0&filter_active=-1", "username", prtgUsername), "passhash", prtgPassword)
 
         val whenResponse = asyncHttpClient.prepareGet(url).execute()
         val response = whenResponse.get()
         val objectMapper = ObjectMapper()
-        val map = objectMapper.readValue(response.responseBodyAsStream, HashMap::class.java)
-        val sensorData = map["sensordata"] as Map<*, *>
-        val sensorValueProvider = sensorValueProviderMap[sensorData["sensortype"]]!!
-        val prtgSensorData = PrtgSensorData(
-                sensorValueProvider.convertName(sensorData["name"].toString()),
-                keys,
-                keys.map { sensorData[it].toString() },
-                sensorValueProvider.convertValue(sensorData["lastvalue"].toString()))
-        return prtgSensorData
+        val prtgResponse = objectMapper.readValue(response.responseBodyAsStream, PrtgResponse::class.java)
+        return prtgResponse.sensors!!
     }
 
     private fun append(s: String, key: String, value: Any): String {
@@ -57,9 +38,18 @@ class PrtgSensorDataProvider @Autowired constructor(sensorValueProviders: Collec
     }
 }
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class PrtgResponse(
+        var sensors: Array<PrtgSensorData>? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class PrtgSensorData(
-        val name: String,
-        val keyNames: List<String>,
-        val keyValues: List<String>,
-        val value: Double?
+        var objid: Long? = null,
+        var device: String? = null,
+        var name: String? = null,
+        var group: String? = null,
+        var tags: String? = null,
+        var lastvalue: String? = null,
+        var lastvalue_raw: Double? = null
 )
