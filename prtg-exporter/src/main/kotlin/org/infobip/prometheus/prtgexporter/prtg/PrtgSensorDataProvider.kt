@@ -22,7 +22,6 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
                                                     @Value("\${prtg.sensors.channels.parallelism:200}") val channelsParallelism: Int,
                                                     @Value("\${prtg.sensors.limit:2147483647}") val softLimit: Int,
-                                                    @Value("\${prtg.sensors.cache.wait:true}") val waitForCache: Boolean,
                                                     @Value("\${prtg.pause:20000}") val pause: Long) : AbstractProcessor() {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -30,14 +29,6 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
     private val fetchPrtgAllSensorData = AtomicReference<Collection<PrtgSensorData>>()
 
     fun getSensorData(): Collection<PrtgSensorData> {
-        while (waitForCache && null == fetchPrtgAllSensorData.get()) {
-            log.info("Waiting for data data...")
-            try {
-                Thread.sleep(1000)
-            } catch (ignore: Exception) {
-            }
-        }
-
         return fetchPrtgAllSensorData.get()
     }
 
