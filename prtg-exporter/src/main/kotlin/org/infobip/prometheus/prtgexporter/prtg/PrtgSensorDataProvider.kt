@@ -14,7 +14,6 @@ import java.net.URLEncoder
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicReference
 
-
 @Service
 class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://127.0.0.1:8080}") val prtgUrl: String,
                                                     @Value("\${prtg.username:}") val prtgUsername: String,
@@ -23,6 +22,7 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
                                                     @Value("\${prtg.sensors.channels.parallelism:50}") val channelsParallelism: Int,
                                                     @Value("\${prtg.sensors.limit:2147483647}") val softLimit: Int,
+                                                    @Value("\${prtg.sensors.cache.wait:true}") val waitForCache: Boolean,
                                                     @Value("\${prtg.pause:20000}") val pause: Long) : AbstractProcessor() {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -30,7 +30,7 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
     private val fetchPrtgAllSensorData = AtomicReference<Collection<PrtgSensorData>>()
 
     fun getSensorData(): Collection<PrtgSensorData> {
-        while (null == fetchPrtgAllSensorData.get()) {
+        while (waitForCache && null == fetchPrtgAllSensorData.get()) {
             log.info("Waiting for data data...")
             try {
                 Thread.sleep(1000)
