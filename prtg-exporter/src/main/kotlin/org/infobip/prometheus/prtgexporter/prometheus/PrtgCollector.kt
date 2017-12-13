@@ -1,6 +1,7 @@
 package org.infobip.prometheus.prtgexporter.prometheus
 
 import io.prometheus.client.Collector
+import org.infobip.prometheus.prtgexporter.prtg.PrtgChannelData
 import org.infobip.prometheus.prtgexporter.prtg.PrtgSensorData
 import org.infobip.prometheus.prtgexporter.prtg.PrtgSensorDataProvider
 import org.slf4j.LoggerFactory
@@ -11,7 +12,8 @@ import java.util.*
 class PrtgCollector(private val prtgSensorDataProvider: PrtgSensorDataProvider) : CustomCollector() {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val labels: List<String> = listOf("sensor_id", "device", "name", "group", "sensor_type")
+    private val sensorLabels: List<String> = listOf("sensor_id", "device", "name", "group", "sensor_type")
+    private val channelLabels: List<String> = listOf("sensor_id", "device", "name", "channel_id", "channel_name", "group", "sensor_type")
 
 
     override fun collect(): MutableList<MetricFamilySamples> {
@@ -29,32 +31,48 @@ class PrtgCollector(private val prtgSensorDataProvider: PrtgSensorDataProvider) 
         return metricFamilySamples
     }
 
-    private fun buildSamples(type: Type, sensorData: List<PrtgSensorData>): MetricFamilySamples {
-        val samples = sensorData.map {
-            if (null == it.lastvalue_raw) {
-                println("Skipping: $it")
-                null
-            } else {
-                try {
-                    MetricFamilySamples.Sample("prtg_sensor_${type}_value", labels,
-                            listOf(it.objid.toString(), it.device!!, it.name!!, it.group!!, it.tags!!.split(" ")[0]), it.lastvalue_raw!!)
-                } catch (e: Exception) {
-                    println("Skipping: $it")
-                    null
+    private fun buildSamples(type: String, sensorData: List<PrtgSensorData>): MetricFamilySamples {
+        val samples: List<MetricFamilySamples.Sample> = sensorData.map { sensor ->
+            val init: List<Pair<PrtgSensorData, PrtgChannelData?>> = listOf()
+            val list = sensor.channels?.fold(init) { acc, channel -> acc.plus(sensor to channel) } ?: listOf(sensor to null)
+            list.mapNotNull { (sensor, channel) ->
+                if (null === channel) {
+                    if (null === sensor.lastvalue_raw) {
+                        null
+                    } else {
+                        try {
+                            MetricFamilySamples.Sample("prtg_sensor_$type", sensorLabels,
+                                    listOf(sensor.objid.toString(), sensor.device!!, sensor.name!!, sensor.group!!, type), sensor.lastvalue_raw!!)
+                        } catch (e: Exception) {
+                            log.error("Error writing metric for sensor: $sensor ", e)
+                            null
+                        }
+                    }
+                } else {
+                    if (null === channel.objid || null === channel.lastvalue_raw) {
+                        null
+                    } else {
+                        try {
+                            MetricFamilySamples.Sample("prtg_sensor_$type", channelLabels,
+                                    listOf(sensor.objid.toString(), sensor.device!!, sensor.name!!, channel.objid.toString(), channel.name ?: "", sensor.group!!, type), channel.lastvalue_raw!!)
+                        } catch (e: Exception) {
+                            log.error("Error writing metric for sensor: $sensor and channel: $channel", e)
+                            null
+                        }
+                    }
                 }
             }
-        }.filter { it != null }
+        }.flatten()
 
         return Collector.MetricFamilySamples(
-                "prtg_sensor_data_$type",
+                "prtg_sensor_$type",
                 Collector.Type.GAUGE,
-                "prtg_sensor_data_$type",
+                "prtg_sensor_$type",
                 samples
         )
     }
 
-    private fun detectType(prtgSensorData: PrtgSensorData): Collector.Type {
-        //TODO detect by first tag
-        return Collector.Type.GAUGE
+    private fun detectType(prtgSensorData: PrtgSensorData): String {
+        return prtgSensorData.tags!!.split(" ")[0]
     }
 }

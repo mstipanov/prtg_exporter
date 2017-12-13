@@ -21,6 +21,8 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.password:}") val prtgPassword: String,
                                                     @Value("\${prtg.sensors.initial.count:1000}") var sensorCount: Int,
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
+                                                    @Value("\${prtg.sensors.channels.parallelism:50}") val channelsParallelism: Int,
+                                                    @Value("\${prtg.sensors.limit:2147483647}") val softLimit: Int,
                                                     @Value("\${prtg.pause:20000}") val pause: Long) : AbstractProcessor() {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -28,7 +30,15 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
     private val fetchPrtgAllSensorData = AtomicReference<Collection<PrtgSensorData>>()
 
     fun getSensorData(): Collection<PrtgSensorData> {
-        return fetchPrtgAllSensorData.get() ?: return fetch()
+        while (null == fetchPrtgAllSensorData.get()) {
+            log.info("Waiting for data data...")
+            try {
+                Thread.sleep(1000)
+            } catch (ignore: Exception) {
+            }
+        }
+
+        return fetchPrtgAllSensorData.get()
     }
 
     override fun process() {
@@ -52,7 +62,7 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
         val allSensors = mutableListOf<PrtgSensorData>()
         var sensors = fetchPrtgSensorData(0, sensorCount, asyncHttpClient)
         allSensors.addAll(sensors)
-        while (sensors.size == sensorCount) {
+        while (sensors.size == sensorCount && sensors.size < softLimit) {
             sensors = fetchPrtgSensorData(allSensors.size, pageSize, asyncHttpClient)
             allSensors.addAll(sensors)
         }
@@ -74,14 +84,35 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
             requestSize = Math.min(pageSize, toRequest)
         }
 
-        val list = futures.map { parseResponse(it.get()) }.flatten()
-        return list
+        return futures.map { parseSensorsResponse(it.get()) }.flatten()
     }
 
-    private fun parseResponse(response: Response): Collection<PrtgSensorData> {
+    private fun parseSensorsResponse(response: Response): Collection<PrtgSensorData> {
         val objectMapper = ObjectMapper()
-        val prtgResponse = objectMapper.readValue(response.responseBodyAsStream, PrtgResponse::class.java)
-        return prtgResponse.sensors!!
+        val prtgResponse = objectMapper.readValue(response.responseBodyAsStream, PrtgSensorsResponse::class.java)
+        val sensors = prtgResponse.sensors!!
+        collectChannels(sensors)
+        return sensors
+    }
+
+    private fun collectChannels(sensors: Collection<PrtgSensorData>) {
+        sensors.chunked(channelsParallelism).map {
+            val futures = it.map { it to fetchChannels(it.objid!!) }
+            futures.forEach { (sensor, future) ->
+                sensor.channels = parseChannelsResponse(future.get())
+            }
+        }
+    }
+
+    private fun fetchChannels(objid: Long): Future<Response> {
+        val url = append(append("$prtgUrl/api/table.json?content=channels&columns=objid,name,lastvalue&count=10000&start=0&filter_active=-1&id=$objid", "username", prtgUsername), "passhash", prtgPassword)
+        return asyncHttpClient.prepareGet(url).execute()
+    }
+
+    private fun parseChannelsResponse(response: Response): Collection<PrtgChannelData> {
+        val objectMapper = ObjectMapper()
+        val prtgResponse = objectMapper.readValue(response.responseBodyAsStream, PrtgChannelsResponse::class.java)
+        return prtgResponse.channels!!
     }
 
     private fun append(s: String, key: String, value: Any): String {
@@ -94,7 +125,7 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-data class PrtgResponse(
+data class PrtgSensorsResponse(
         var sensors: Collection<PrtgSensorData>? = null
 )
 
@@ -105,6 +136,20 @@ data class PrtgSensorData(
         var name: String? = null,
         var group: String? = null,
         var tags: String? = null,
+        var lastvalue: String? = null,
+        var lastvalue_raw: Double? = null,
+        var channels: Collection<PrtgChannelData>? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class PrtgChannelsResponse(
+        var channels: Collection<PrtgChannelData>? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class PrtgChannelData(
+        var objid: Long? = null,
+        var name: String? = null,
         var lastvalue: String? = null,
         var lastvalue_raw: Double? = null
 )
