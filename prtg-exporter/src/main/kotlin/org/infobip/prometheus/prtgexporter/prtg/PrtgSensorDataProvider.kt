@@ -20,7 +20,7 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.password:}") val prtgPassword: String,
                                                     @Value("\${prtg.sensors.initial.count:1000}") var sensorCount: Int,
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
-                                                    @Value("\${prtg.sensors.channels.parallelism:50}") val channelsParallelism: Int,
+                                                    @Value("\${prtg.sensors.channels.parallelism:200}") val channelsParallelism: Int,
                                                     @Value("\${prtg.sensors.limit:2147483647}") val softLimit: Int,
                                                     @Value("\${prtg.sensors.cache.wait:true}") val waitForCache: Boolean,
                                                     @Value("\${prtg.pause:20000}") val pause: Long) : AbstractProcessor() {

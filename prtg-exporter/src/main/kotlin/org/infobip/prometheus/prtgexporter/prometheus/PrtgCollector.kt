@@ -12,8 +12,7 @@ import java.util.*
 class PrtgCollector(private val prtgSensorDataProvider: PrtgSensorDataProvider) : CustomCollector() {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val sensorLabels: List<String> = listOf("sensor_id", "device", "name", "group", "sensor_type")
-    private val channelLabels: List<String> = listOf("sensor_id", "device", "name", "channel_id", "channel_name", "group", "sensor_type")
+    private val labels: List<String> = listOf("sensor_id", "device", "name", "channel_id", "channel_name", "group", "sensor_type")
 
 
     override fun collect(): MutableList<MetricFamilySamples> {
@@ -41,8 +40,8 @@ class PrtgCollector(private val prtgSensorDataProvider: PrtgSensorDataProvider) 
                         null
                     } else {
                         try {
-                            MetricFamilySamples.Sample("prtg_sensor_$type", sensorLabels,
-                                    listOf(sensor.objid.toString(), sensor.device!!, sensor.name!!, sensor.group!!, type), sensor.lastvalue_raw!!)
+                            MetricFamilySamples.Sample("prtg_sensor_$type", labels,
+                                    listOf(sensor.objid.toString(), sensor.device!!, sensor.name!!, "", "", sensor.group!!, type), sensor.lastvalue_raw!!)
                         } catch (e: Exception) {
                             log.error("Error writing metric for sensor: $sensor ", e)
                             null
@@ -53,7 +52,7 @@ class PrtgCollector(private val prtgSensorDataProvider: PrtgSensorDataProvider) 
                         null
                     } else {
                         try {
-                            MetricFamilySamples.Sample("prtg_sensor_$type", channelLabels,
+                            MetricFamilySamples.Sample("prtg_sensor_$type", labels,
                                     listOf(sensor.objid.toString(), sensor.device!!, sensor.name!!, channel.objid.toString(), channel.name ?: "", sensor.group!!, type), channel.lastvalue_raw!!)
                         } catch (e: Exception) {
                             log.error("Error writing metric for sensor: $sensor and channel: $channel", e)
