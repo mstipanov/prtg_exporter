@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.infobip.prometheus</groupId>
         <artifactId>prtg_exporter</artifactId>
-        <version>0.0.5-SNAPSHOT</version>
+        <version>0.0.6-SNAPSHOT</version>
     </parent>
 
     <artifactId>prtg-exporter-app</artifactId>
@@ -29,7 +29,7 @@
         <dependency>
             <groupId>org.infobip.prometheus</groupId>
             <artifactId>prtg-exporter</artifactId>
-            <version>0.0.5-SNAPSHOT</version>
+            <version>0.0.6-SNAPSHOT</version>
         </dependency>
 
         <dependency>

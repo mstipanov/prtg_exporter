@@ -22,14 +22,17 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
                                                     @Value("\${prtg.sensors.channels.parallelism:200}") val channelsParallelism: Int,
                                                     @Value("\${prtg.sensors.limit:2147483647}") val softLimit: Int,
-                                                    @Value("\${prtg.pause:20000}") val pause: Long) : AbstractProcessor() {
+                                                    @Value("\${prtg.pause:20000}") val pause: Long,
+                                                    @Value("\${prtg.sensors.filter.enabled:false}") val filterEnabled: Boolean,
+                                                    @Value("\${prtg.sensors.filter.objids:}") val filterSensorIds: Array<String>,
+                                                    @Value("\${prtg.sensors.filter.groups:}") val filterGroups: Array<String>) : AbstractProcessor() {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val asyncHttpClient = asyncHttpClient()
     private val fetchPrtgAllSensorData = AtomicReference<Collection<PrtgSensorData>>()
 
     fun getSensorData(): Collection<PrtgSensorData> {
-        return fetchPrtgAllSensorData.get()
+        return fetchPrtgAllSensorData.get() ?: emptyList()
     }
 
     override fun process() {
@@ -68,7 +71,11 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
 
         var requestSize = Math.min(pageSize, toRequest)
         while (requestSize > 0) {
-            val url = append(append("$prtgUrl/api/table.json?content=sensors&columns=objid,device,name,group,tags,lastvalue&start=$from&count=$requestSize&filter_active=-1", "username", prtgUsername), "passhash", prtgPassword)
+            var url = append(append("$prtgUrl/api/table.json?content=sensors&columns=objid,device,name,group,tags,lastvalue&start=$from&count=$requestSize&filter_active=-1", "username", prtgUsername), "passhash", prtgPassword)
+            if (filterEnabled) {
+                url += filterSensorIds.joinToString(separator = "") {"&filter_objid=${URLEncoder.encode(it, "UTF-8")}"}
+                url += filterGroups.joinToString(separator = "") {"&filter_group=${URLEncoder.encode(it, "UTF-8")}"}
+            }
             futures.add(asyncHttpClient.prepareGet(url).execute())
             toRequest -= requestSize
             from += requestSize
