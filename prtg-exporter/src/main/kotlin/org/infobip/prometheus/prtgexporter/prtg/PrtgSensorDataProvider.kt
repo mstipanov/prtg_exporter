@@ -13,10 +13,12 @@ import org.springframework.stereotype.Service
 import java.net.URLEncoder
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.collections.HashMap
 
 @Service
 class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://127.0.0.1:8080}") val prtgUrl: String,
                                                     @Value("\${prtg.username:}") val prtgUsername: String,
+                                                    @Value("\${prtg.passhash:}") val prtgPasshash: String,
                                                     @Value("\${prtg.password:}") val prtgPassword: String,
                                                     @Value("\${prtg.sensors.initial.count:1000}") var sensorCount: Int,
                                                     @Value("\${prtg.sensors.page.size:1000}") val pageSize: Int,
@@ -25,11 +27,16 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
                                                     @Value("\${prtg.pause:20000}") val pause: Long,
                                                     @Value("\${prtg.sensors.filter.enabled:false}") val filterEnabled: Boolean,
                                                     @Value("\${prtg.sensors.filter.objids:}") val filterSensorIds: Array<String>,
+                                                    @Value("\${prtg.sensors.filter.tags:}") val filterTags: Array<String>,
                                                     @Value("\${prtg.sensors.filter.groups:}") val filterGroups: Array<String>) : AbstractProcessor() {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val asyncHttpClient = asyncHttpClient()
     private val fetchPrtgAllSensorData = AtomicReference<Collection<PrtgSensorData>>()
+
+    init {
+        fetch()
+    }
 
     fun getSensorData(): Collection<PrtgSensorData> {
         return fetchPrtgAllSensorData.get() ?: emptyList()
@@ -71,8 +78,12 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
 
         var requestSize = Math.min(pageSize, toRequest)
         while (requestSize > 0) {
-            var url = append(append("$prtgUrl/api/table.json?content=sensors&columns=objid,device,name,group,tags,lastvalue&start=$from&count=$requestSize&filter_active=-1", "username", prtgUsername), "passhash", prtgPassword)
+            var url = append(append("$prtgUrl/api/table.json?content=sensors&columns=objid,device,name,group,tags,lastvalue&start=$from&count=$requestSize&filter_active=-1", "username", prtgUsername),
+                    if (prtgPassword.isEmpty()) "passhash" else "password",
+                    if (prtgPassword.isEmpty()) prtgPasshash else prtgPassword
+                    )
             if (filterEnabled) {
+                url += filterTags.joinToString(",","&filter_tags=@tag(",")", -1, "...", {URLEncoder.encode(it, "UTF-8")})
                 url += filterSensorIds.joinToString(separator = "") {"&filter_objid=${URLEncoder.encode(it, "UTF-8")}"}
                 url += filterGroups.joinToString(separator = "") {"&filter_group=${URLEncoder.encode(it, "UTF-8")}"}
             }
@@ -103,7 +114,9 @@ class PrtgSensorDataProvider @Autowired constructor(@Value("\${prtg.url:http://1
     }
 
     private fun fetchChannels(objid: Long): Future<Response> {
-        val url = append(append("$prtgUrl/api/table.json?content=channels&columns=objid,name,lastvalue&count=10000&start=0&filter_active=-1&id=$objid", "username", prtgUsername), "passhash", prtgPassword)
+        val url = append(append("$prtgUrl/api/table.json?content=channels&columns=objid,name,lastvalue&count=10000&start=0&filter_active=-1&id=$objid", "username", prtgUsername),
+                if (prtgPassword.isEmpty()) "passhash" else "password",
+                if (prtgPassword.isEmpty()) prtgPasshash else prtgPassword)
         return asyncHttpClient.prepareGet(url).execute()
     }
 
@@ -136,7 +149,8 @@ data class PrtgSensorData(
         var tags: String? = null,
         var lastvalue: String? = null,
         var lastvalue_raw: Double? = null,
-        var channels: Collection<PrtgChannelData>? = null
+        var channels: Collection<PrtgChannelData>? = null,
+        var additionalLabels: MutableMap<String, String> = HashMap()
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
